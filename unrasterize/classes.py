@@ -120,7 +120,7 @@ class BaseUnrasterizer(object):
         return np.stack(
             np.unravel_index(
                 indices=np.argsort(np.ravel(band))[::-1],
-                dims=band.shape
+                shape=band.shape
             ),
             axis=-1
         )
