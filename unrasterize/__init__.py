@@ -20,6 +20,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-from .classes import BaseUnrasterizer, NaiveUnrasterizer, Unrasterizer, WindowedUnrasterizer  # noqa
+from .classes import (  # noqa
+    BaseUnrasterizer,
+    FullUnrasterizer,
+    NaiveUnrasterizer,
+    Unrasterizer,
+    WindowedUnrasterizer,
+)
 
-__version__ = '1.0.0'
+__version__ = "1.0.0"

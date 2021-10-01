@@ -3,12 +3,11 @@ import itertools
 import math
 
 import geojson
+import geopandas as gpd
+import numpy as np
 import pathos
 import rasterio
 import shapely
-
-import geopandas as gpd
-import numpy as np
 
 
 class BaseUnrasterizer(object):
@@ -43,7 +42,7 @@ class BaseUnrasterizer(object):
         """
         raise NotImplementedError
 
-    def to_geojson(self, value_attribute_name='value', **extra):
+    def to_geojson(self, value_attribute_name="value", **extra):
         """Convert the selected points and values to GeoJSON.
 
         Parameters
@@ -69,16 +68,16 @@ class BaseUnrasterizer(object):
                 geojson.Feature(
                     id=id,
                     geometry=shapely.geometry.Point(coord),
-                    properties={
-                        value_attribute_name: float(value)
-                    }
+                    properties={value_attribute_name: float(value)},
                 )
-                for id, (coord, value) in enumerate(zip(self.selected_coords, self.selected_values))
+                for id, (coord, value) in enumerate(
+                    zip(self.selected_coords, self.selected_values)
+                )
             ],
             **extra
         )
 
-    def to_geopandas(self, value_attribute_name='value', **extra):
+    def to_geopandas(self, value_attribute_name="value", **extra):
         """Convert the selected points and values to a ``geopandas.GeoDataFrame``.
 
         Parameters
@@ -97,8 +96,8 @@ class BaseUnrasterizer(object):
         """
         feature_collection = self.to_geojson(value_attribute_name, **extra)
         return gpd.GeoDataFrame.from_features(
-            features=feature_collection['features'],
-            crs=feature_collection.get('crs', None)
+            features=feature_collection["features"],
+            crs=feature_collection.get("crs", None),
         )
 
     @staticmethod
@@ -119,10 +118,9 @@ class BaseUnrasterizer(object):
         """
         return np.stack(
             np.unravel_index(
-                indices=np.argsort(np.ravel(band))[::-1],
-                shape=band.shape
+                indices=np.argsort(np.ravel(band))[::-1], shape=band.shape
             ),
-            axis=-1
+            axis=-1,
         )
 
     @staticmethod
@@ -149,9 +147,7 @@ class BaseUnrasterizer(object):
         # Avoid underflow by ignoring negative values.
         total = np.sum(band[band > 0.0], dtype=np.float32)
         total_selected = np.sum(raw_pixel_values, dtype=np.float32)
-        return [
-            val * total / total_selected for val in raw_pixel_values
-        ]
+        return [val * total / total_selected for val in raw_pixel_values]
 
     @staticmethod
     def _get_coordinates(transform, pixels, row_offset=0, col_offset=0):
@@ -227,11 +223,11 @@ class NaiveUnrasterizer(BaseUnrasterizer):
         self.selected_pixels = sorted_pixels[self._selected_indexes]
         self.selected_values = self._reassign_pixel_values(
             band=band,
-            pixels=self.selected_pixels
+            pixels=self.selected_pixels,
         )
         self.selected_coords = self._get_coordinates(
             transform=raster_data.transform,
-            pixels=self.selected_pixels
+            pixels=self.selected_pixels,
         )
 
 
@@ -293,7 +289,7 @@ class Unrasterizer(BaseUnrasterizer):
         self._select_representative_pixels_from_band(
             band=band,
             transform=raster_data.transform,
-            window=window
+            window=window,
         )
 
     def _select_representative_pixels_from_band(self, band, transform, window=None):
@@ -333,18 +329,18 @@ class Unrasterizer(BaseUnrasterizer):
         self.selected_values = self._reassign_pixel_values(
             band=band,
             pixels=self.selected_pixels,
-            raw_pixel_values=self._raw_pixel_values
+            raw_pixel_values=self._raw_pixel_values,
         )
         self.selected_coords = self._get_coordinates(
             transform=transform,
             pixels=self.selected_pixels,
             col_offset=window.col_off,
-            row_offset=window.row_off
+            row_offset=window.row_off,
         )
         return (
             self.selected_pixels,
             self.selected_values,
-            self.selected_coords
+            self.selected_coords,
         )
 
     def _select_next_pixel(self, band, pixel, idx):
@@ -367,7 +363,7 @@ class Unrasterizer(BaseUnrasterizer):
         self._raw_pixel_values.append(
             np.sum(
                 window[window > 0.0],
-                dtype=np.float32
+                dtype=np.float32,
             )
         )
 
@@ -458,7 +454,7 @@ class WindowedUnrasterizer(BaseUnrasterizer):
                 self.select_representative_pixels_in_window,
                 bands,
                 itertools.repeat(transform),
-                windows
+                windows,
             )
 
         pixel_lists, value_lists, coord_lists = zip(*results)
@@ -490,7 +486,7 @@ class WindowedUnrasterizer(BaseUnrasterizer):
                 col_off=i * window_shape[0],
                 row_off=j * window_shape[1],
                 width=window_shape[0],
-                height=window_shape[1]
+                height=window_shape[1],
             )
             for i, j in itertools.product(range(n_windows_x), range(n_windows_y))
         ]
@@ -508,10 +504,49 @@ class WindowedUnrasterizer(BaseUnrasterizer):
             A window from which to select the pixels.
             Used to keep track of row and column offsets.
         """
-        unrasterizer = Unrasterizer(mask_width=self.mask_width, threshold=self.threshold)
+        unrasterizer = Unrasterizer(
+            mask_width=self.mask_width, threshold=self.threshold
+        )
         pixels, values, coords = unrasterizer._select_representative_pixels_from_band(
             band=band,
             transform=transform,
-            window=window
+            window=window,
         )
         return pixels, values, coords
+
+
+class FullUnrasterizer(BaseUnrasterizer):
+    """An implementation of the ``BaseUnrasterizer`` interface that insists on choosing
+    all the pixels.
+
+    Attributes
+    ----------
+    selected_pixels : list
+        Selected pixels as (row, column) indexes.
+    selected_values : list
+        Raster values of selected pixels.
+    selected_coords : list
+        Coordinates of selected pixels.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def select_representative_pixels(self, raster_data, window=None):
+        """Select representative pixels for the provided raster dataset."""
+        if not window:
+            window = rasterio.windows.Window(
+                col_off=0, row_off=0, width=raster_data.width, height=raster_data.height
+            )
+        band = raster_data.read(window=window)[0]
+        self.selected_pixels = np.stack(np.where(band), axis=-1)
+
+        for row, col in self.selected_pixels:
+            self.selected_values.append(band[row, col])
+            self.selected_coords.append(
+                rasterio.transform.xy(
+                    transform=raster_data.transform,
+                    rows=row,
+                    cols=col,
+                )
+            )
